@@ -1,0 +1,139 @@
+service: pollyspeak
+
+provider:
+  name: aws
+  runtime: python3.8
+
+  stage: dev
+  region: us-east-1
+  
+  iamRoleStatements:   
+     - Effect: "Allow"
+       Action:
+         - "SNS:Publish"
+       Resource: 
+         - "Ref" : "Topic"
+     - Effect: "Allow"
+       Action:
+         - "dynamodb:PutItem"
+         - "dynamodb:GetItem"
+         - "dynamodb:UpdateItem"
+       Resource: 
+         - !GetAtt Table.Arn
+     - Effect: "Allow"
+       Action:
+         - "polly:SynthesizeSpeech"
+       Resource: "*"
+     - Effect: "Allow"
+       Action:
+         - "transcribe:StartTranscriptionJob"
+         - "transcribe:GetTranscriptionJob"
+       Resource: "*"
+     - Effect: "Allow"
+       Action:
+         - "s3:PutObject"
+         - "s3:PutObjectAcl"
+         - "s3:GetBucketLocation"
+       Resource: 
+         - Fn::Join:
+             - ""
+             - - "arn:aws:s3:::"
+               - "Ref" : "Storage"
+               - "/*"
+         - Fn::Join:
+             - ""
+             - - "arn:aws:s3:::"
+               - "Ref" : "Storage"
+     - Effect: "Allow"
+       Action:
+         - "s3:ListBucket"
+       Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+     - Effect: "Allow"
+       Action:
+         - "s3:PutObject"
+       Resource:
+         Fn::Join:
+           - ""
+           - - "arn:aws:s3:::"
+             - "Ref" : "ServerlessDeploymentBucket"
+             - "/*"
+             
+  environment:
+    Bucket: !Ref Storage
+    Table: !Ref Table
+    Topic: !Ref Topic
+     
+functions:
+  upload:
+    handler: handler.upload
+    events:
+      - http:
+          path: upload
+          method: post
+  synthesize:
+    handler: handler.synthesize
+    events:
+      - s3:
+          bucket: !Ref Storage
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .txt
+          existing: true         
+  transcription:
+    handler: handler.transcription
+    reservedConcurrency: 5
+    timeout: 300
+    events:
+      - sns: 
+          arn: !Ref Topic 
+          topicName: PollyTopic
+resources:
+  Resources:
+    Storage:
+      Type: AWS::S3::Bucket
+      Properties:
+        NotificationConfiguration:
+          TopicConfigurations:
+          - Event: s3:ObjectCreated:*
+            Topic: !Ref Topic 
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .mp3                  
+    Table:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: ID
+            AttributeType: S
+        KeySchema:
+          - AttributeName: ID
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    Topic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: PollyTopic
+    TopicPolicy:
+      Type: AWS::SNS::TopicPolicy
+      Properties:    
+        PolicyDocument:
+          Id: "TopicPolicyId1"
+          Version: "2012-10-17"
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service: "s3.amazonaws.com"
+              #AWS: '635529819142'
+            Action: 
+             - "SNS:Publish"
+            Resource: !Ref Topic
+        Topics:
+        - !Ref Topic  
+    MySubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint: sierbin.malgorzata@gmail.com
+        Protocol: email
+        TopicArn: !Ref 'Topic'
