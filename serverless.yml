@@ -125,7 +125,6 @@ resources:
           - Effect: Allow
             Principal:
               Service: "s3.amazonaws.com"
-              #AWS: '635529819142'
             Action: 
              - "SNS:Publish"
             Resource: !Ref Topic
@@ -134,6 +133,6 @@ resources:
     MySubscription:
       Type: AWS::SNS::Subscription
       Properties:
-        Endpoint: sierbin.malgorzata@gmail.com
+        Endpoint: example@gmail.com
         Protocol: email
         TopicArn: !Ref 'Topic'
